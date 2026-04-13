@@ -1,0 +1,848 @@
+{% extends "base.html" %}
+
+{% block title %}Nuevo trabajo · Doblaje local de video{% endblock %}
+
+{% block content %}
+<style>
+  .upload-shell {
+    position: relative;
+  }
+
+  .upload-shell.is-busy,
+  .upload-shell.is-busy * {
+    cursor: wait !important;
+  }
+
+  .upload-shell.is-busy .busy-lock {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .busy-lock {
+    position: absolute;
+    inset: 0;
+    border-radius: 22px;
+    background: rgba(8, 12, 24, 0.62);
+    backdrop-filter: blur(6px);
+    display: grid;
+    place-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 5;
+  }
+
+  .busy-box {
+    width: min(520px, calc(100% - 32px));
+    background: rgba(20, 27, 53, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+    border-radius: 18px;
+    padding: 22px;
+  }
+
+  .busy-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .spinner {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.18);
+    border-top-color: #7aa2ff;
+    animation: spin 0.9s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .busy-title {
+    font-weight: 800;
+    font-size: 1rem;
+  }
+
+  .busy-text {
+    color: var(--muted);
+    font-size: 0.93rem;
+    margin-bottom: 14px;
+  }
+
+  .upload-progress {
+    width: 100%;
+    height: 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+
+  .upload-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #5b8cff, #22c55e);
+    transition: width 0.15s linear;
+  }
+
+  .upload-progress-meta {
+    margin-top: 10px;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+
+  .pretty-select {
+    position: relative;
+  }
+
+  .pretty-select::after {
+    content: "▾";
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
+  .pretty-select select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 40px;
+  }
+
+  .button[disabled] {
+    opacity: 0.7;
+    cursor: wait;
+  }
+
+  .field-note-inline {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.86rem;
+  }
+
+  .form-status {
+    min-height: 20px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-top: 6px;
+  }
+
+  .form-status.error {
+    color: #fca5a5;
+  }
+
+  .drop-area {
+    border: 2px dashed rgba(232, 236, 248, 0.38);
+    padding: 20px;
+    border-radius: 14px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.025);
+    transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s ease;
+  }
+
+  .drop-area:hover {
+    border-color: rgba(91, 140, 255, 0.6);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .drop-area.dragging {
+    border-color: #5b8cff;
+    background: rgba(91, 140, 255, 0.08);
+    transform: translateY(-1px);
+  }
+
+  .drop-area.has-file {
+    border-color: rgba(34, 197, 94, 0.55);
+    background: rgba(34, 197, 94, 0.06);
+  }
+
+  .drop-title {
+    margin: 0 0 8px;
+    color: var(--text);
+    font-weight: 700;
+  }
+
+  .drop-subtitle {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .drop-file-panel {
+    margin-top: 14px;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+  }
+
+  .drop-file-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .drop-file-head strong {
+    color: var(--text);
+    font-size: 0.95rem;
+    word-break: break-word;
+  }
+
+  .drop-file-head span {
+    color: var(--muted);
+    font-size: 0.86rem;
+    white-space: nowrap;
+  }
+
+  .drop-file-bar {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .drop-file-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #22c55e, #5b8cff);
+    transition: width 0.2s ease;
+  }
+
+  .drop-file-status {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+
+  .upload-panel-fill.is-indeterminate {
+    width: 42% !important;
+    animation: upload-indeterminate 1.1s ease-in-out infinite;
+  }
+
+  @keyframes upload-indeterminate {
+    0% {
+      transform: translateX(-85%);
+    }
+
+    100% {
+      transform: translateX(230%);
+    }
+  }
+</style>
+
+<section class="hero upload-shell" id="upload-shell">
+  <div class="busy-lock" id="busy-lock" aria-hidden="true">
+    <div class="busy-box">
+      <div class="busy-head">
+        <div class="spinner"></div>
+        <div class="busy-title" id="busy-title">Subiendo archivo</div>
+      </div>
+      <div class="busy-text" id="busy-text">
+        Espere mientras se transfiere el video al servidor.
+      </div>
+      <div class="upload-progress" aria-label="Progreso de carga del video">
+        <div class="upload-progress-fill" id="upload-progress-fill"></div>
+      </div>
+      <div class="upload-progress-meta">
+        <span id="upload-progress-label">0%</span>
+        <span id="upload-progress-detail">Preparando archivo...</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <h2 class="hero-title">Convierta un video a otro idioma con audio nuevo, de forma local.</h2>
+      <p class="hero-text">
+        Suba su archivo, elija el idioma de destino y seleccione una voz. La aplicación transcribe,
+        traduce, sintetiza la voz y genera un nuevo video con el audio incrustado.
+      </p>
+
+      <div class="feature-list">
+        <div class="feature">
+          <strong>Subida con seguimiento</strong>
+          <span>Bloqueo visual y barra de progreso real de carga.</span>
+        </div>
+        <div class="feature">
+          <strong>Procesamiento local</strong>
+          <span>Transcripción, traducción y voz ejecutadas en su equipo.</span>
+        </div>
+        <div class="feature">
+          <strong>Resultado final</strong>
+          <span>MP4 con audio nuevo y seguimiento por etapas.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card form-card">
+    <div class="card-body">
+      <h2>Crear nuevo trabajo</h2>
+      <p class="section-subtitle">Suba el video y configure idioma y voz con selección guiada.</p>
+
+      <form id="job-form" class="form-grid" action="/jobs" method="post" enctype="multipart/form-data" novalidate>
+        <div class="form-row">
+          <div class="form-label">Selecciona un video</div>
+          <div id="drop-area" class="drop-area">
+            <input type="file" id="video" name="video" accept="video/*" style="display: none;" />
+
+            <div class="drop-main">
+              <p id="drop-text" class="drop-title">Arrastra y suelta el video aquí o haz clic para seleccionar.</p>
+              <p class="drop-subtitle">Formatos comunes: MP4, MOV, MKV, WebM</p>
+            </div>
+
+            <div id="drop-file-panel" class="drop-file-panel" style="display:none;">
+              <div class="drop-file-head">
+                <strong id="drop-file-name">video.mp4</strong>
+                <span id="drop-file-size">0 MB</span>
+              </div>
+
+              <div class="drop-file-bar">
+                <div id="drop-file-fill" class="drop-file-fill"></div>
+              </div>
+
+              <div id="drop-file-status" class="drop-file-status">Archivo valido</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="target_language">Idioma de destino</label>
+            <div class="pretty-select">
+              <select id="target_language" name="target_language" required>
+                {% for lang in language_options %}
+                <option value="{{ lang.code }}" {% if lang.code=="es" %}selected{% endif %}>
+                  {{ lang.label }} ({{ lang.code }})
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="help">Se usará el código corto del idioma para la traducción local.</div>
+          </div>
+
+          <div class="form-group">
+            <label for="voice_name">Voz de Piper</label>
+            <div class="pretty-select">
+              <select id="voice_name" name="voice_name" required>
+                {% for voice in voice_options %}
+                <option value="{{ voice }}" {% if voice==default_voice %}selected{% endif %}>
+                  {{ voice }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field-note-inline" id="voice-hint">
+              La app intentará seleccionar la voz sugerida para el idioma elegido, si esa voz existe localmente.
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="submit-button" class="btn button button-primary" type="submit">Crear video doblado</button>
+            <span class="meta-note">La barra de esta vista muestra la carga del archivo. Luego verá el progreso del
+              job.</span>
+          </div>
+          <div id="upload-panel" class="upload-panel" style="display:none;">
+            <div class="upload-panel-head">
+              <strong id="upload-panel-title">Subiendo archivo</strong>
+              <span id="upload-panel-percent">0%</span>
+            </div>
+
+            <div class="upload-panel-bar">
+              <div id="upload-panel-fill" class="upload-panel-fill"></div>
+            </div>
+
+            <div id="upload-panel-detail" class="upload-panel-detail">
+              Preparando archivo...
+            </div>
+          </div>
+          <div id="form-status" class="form-status" aria-live="polite"></div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<section class="info-grid">
+  <div class="info-card">
+    <h3>Subida del archivo</h3>
+    <p>El envío del video se muestra aquí con porcentaje real hasta que el servidor crea el job.</p>
+  </div>
+  <div class="info-card">
+    <h3>Selección guiada</h3>
+    <p>Idioma y voz usan select. Si existe una voz sugerida para el idioma, se elige automáticamente.</p>
+  </div>
+  <div class="info-card">
+    <h3>Procesamiento posterior</h3>
+    <p>Al terminar la subida, la app lo redirige a la página del job donde verá la barra de progreso del procesamiento.
+    </p>
+  </div>
+</section>
+
+<script>
+  const suggestedVoices = {{ voices | tojson }};
+  const availableVoices = {{ voice_options | tojson }};
+
+  const form = document.getElementById("job-form");
+  const submitButton = document.getElementById("submit-button");
+  const languageSelect = document.getElementById("target_language");
+  const voiceSelect = document.getElementById("voice_name");
+  const voiceHint = document.getElementById("voice-hint");
+  const formStatus = document.getElementById("form-status");
+
+  const dropArea = document.getElementById("drop-area");
+  const videoInput = document.getElementById("video");
+  const dropText = document.getElementById("drop-text");
+
+  const dropFilePanel = document.getElementById("drop-file-panel");
+  const dropFileName = document.getElementById("drop-file-name");
+  const dropFileSize = document.getElementById("drop-file-size");
+  const dropFileFill = document.getElementById("drop-file-fill");
+  const dropFileStatus = document.getElementById("drop-file-status");
+
+  const uploadPanel = document.getElementById("upload-panel");
+  const uploadPanelTitle = document.getElementById("upload-panel-title");
+  const uploadPanelPercent = document.getElementById("upload-panel-percent");
+  const uploadPanelFill = document.getElementById("upload-panel-fill");
+  const uploadPanelDetail = document.getElementById("upload-panel-detail");
+
+  let currentXhr = null;
+  let fakeUploadTimer = null;
+  let fakeUploadPercent = 0;
+  let fakeUploadCap = 0;
+
+  function enhanceSelect(select) {
+    const wrapper = select.closest(".pretty-select");
+    if (!wrapper || wrapper.dataset.enhanced === "true") return null;
+
+    wrapper.dataset.enhanced = "true";
+    wrapper.classList.add("pretty-select-custom");
+    select.classList.add("native-select-hidden");
+
+    const xselect = document.createElement("div");
+    xselect.className = "xselect theme-neon";
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "xselect-trigger";
+    trigger.setAttribute("aria-haspopup", "listbox");
+    trigger.setAttribute("aria-expanded", "false");
+
+    const valueNode = document.createElement("span");
+    valueNode.className = "xselect-value";
+
+    const caret = document.createElement("span");
+    caret.className = "xselect-caret";
+    caret.textContent = "▾";
+
+    const panel = document.createElement("div");
+    panel.className = "xselect-panel";
+    panel.hidden = true;
+
+    trigger.append(valueNode, caret);
+    xselect.append(trigger, panel);
+    wrapper.appendChild(xselect);
+
+    function closePanel() {
+      panel.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+    }
+
+    function syncFromSelect() {
+      panel.innerHTML = "";
+
+      const selectedOption = select.options[select.selectedIndex];
+      valueNode.textContent = selectedOption
+        ? selectedOption.textContent.trim()
+        : "Seleccione una opción";
+
+      [...select.options].forEach((opt) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "xselect-option" + (opt.selected ? " is-selected" : "");
+        btn.dataset.value = opt.value;
+
+        const main = document.createElement("span");
+        main.className = "xselect-main";
+        main.textContent = opt.textContent.trim();
+
+        btn.appendChild(main);
+
+        btn.addEventListener("click", function () {
+          if (select.disabled) return;
+
+          select.value = opt.value;
+          syncFromSelect();
+          closePanel();
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+
+        panel.appendChild(btn);
+      });
+    }
+
+    trigger.addEventListener("click", function () {
+      if (trigger.disabled) return;
+
+      const shouldOpen = panel.hidden;
+
+      document.querySelectorAll(".xselect-panel").forEach((p) => {
+        if (p !== panel) p.hidden = true;
+      });
+
+      document.querySelectorAll(".xselect-trigger").forEach((t) => {
+        if (t !== trigger) t.setAttribute("aria-expanded", "false");
+      });
+
+      panel.hidden = !shouldOpen;
+      trigger.setAttribute("aria-expanded", String(shouldOpen));
+    });
+
+    document.addEventListener("click", function (event) {
+      if (!wrapper.contains(event.target)) {
+        closePanel();
+      }
+    });
+
+    select.addEventListener("change", syncFromSelect);
+    syncFromSelect();
+
+    return { wrapper, trigger, panel, syncFromSelect, closePanel };
+  }
+
+  const enhancedLanguageSelect = enhanceSelect(languageSelect);
+  const enhancedVoiceSelect = enhanceSelect(voiceSelect);
+
+  function showUploadPanel() {
+    uploadPanel.style.display = "block";
+  }
+
+  function hideUploadPanel() {
+    uploadPanel.style.display = "none";
+  }
+
+  function setBusy(isBusy) {
+    submitButton.disabled = isBusy;
+    videoInput.disabled = isBusy;
+    languageSelect.disabled = isBusy;
+    voiceSelect.disabled = isBusy;
+
+    if (enhancedLanguageSelect) {
+      enhancedLanguageSelect.trigger.disabled = isBusy;
+      enhancedLanguageSelect.closePanel();
+    }
+
+    if (enhancedVoiceSelect) {
+      enhancedVoiceSelect.trigger.disabled = isBusy;
+      enhancedVoiceSelect.closePanel();
+    }
+
+    document.body.style.cursor = isBusy ? "wait" : "";
+  }
+
+  function stopFakeUploadSimulation() {
+    if (fakeUploadTimer) {
+      window.clearInterval(fakeUploadTimer);
+      fakeUploadTimer = null;
+    }
+  }
+
+  function setUploadProgress(percent, title, detail) {
+    const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+    showUploadPanel();
+    uploadPanelFill.classList.remove("is-indeterminate");
+    uploadPanelTitle.textContent = title;
+    uploadPanelPercent.textContent = `${Math.round(safePercent)}%`;
+    uploadPanelFill.style.width = `${safePercent}%`;
+    uploadPanelDetail.textContent = detail;
+  }
+
+  function startFakeUploadSimulation(title, detail, startPercent = 8, cap = 88) {
+    stopFakeUploadSimulation();
+    fakeUploadPercent = Math.max(fakeUploadPercent, startPercent);
+    fakeUploadCap = cap;
+    setUploadProgress(fakeUploadPercent, title, detail);
+
+    fakeUploadTimer = window.setInterval(function () {
+      if (fakeUploadPercent >= fakeUploadCap) return;
+
+      const remaining = fakeUploadCap - fakeUploadPercent;
+      const step = remaining > 25 ? 2.8 : remaining > 12 ? 1.4 : 0.45;
+      fakeUploadPercent = Math.min(fakeUploadCap, fakeUploadPercent + step);
+      setUploadProgress(fakeUploadPercent, title, detail);
+    }, 180);
+  }
+
+  function advanceFakeUploadTo(percent, title, detail) {
+    fakeUploadPercent = Math.max(fakeUploadPercent, percent);
+    setUploadProgress(fakeUploadPercent, title, detail);
+  }
+
+  function syncVoiceWithLanguage() {
+    const selectedLanguage = languageSelect.value;
+    const suggested = suggestedVoices[selectedLanguage];
+
+    if (suggested && availableVoices.includes(suggested)) {
+      voiceSelect.value = suggested;
+
+      if (enhancedVoiceSelect) {
+        enhancedVoiceSelect.syncFromSelect();
+      }
+
+      voiceHint.textContent = "Voz sugerida seleccionada automáticamente para el idioma elegido.";
+      return;
+    }
+
+    if (suggested && !availableVoices.includes(suggested)) {
+      if (enhancedVoiceSelect) {
+        enhancedVoiceSelect.syncFromSelect();
+      }
+
+      voiceHint.textContent = "La voz sugerida para este idioma no está descargada localmente. Se mantiene la voz actual.";
+      return;
+    }
+
+    if (enhancedVoiceSelect) {
+      enhancedVoiceSelect.syncFromSelect();
+    }
+
+    voiceHint.textContent = "Seleccione una voz local disponible.";
+  }
+
+  function resetDropAreaUi() {
+    dropArea.classList.remove("dragging", "has-file");
+    dropText.textContent = "Arrastra y suelta el video aquí o haz clic para seleccionar.";
+    dropFilePanel.style.display = "none";
+    dropFileFill.style.width = "0%";
+    dropFileName.textContent = "video.mp4";
+    dropFileSize.textContent = "0 MB";
+    dropFileStatus.textContent = "Archivo listo en el navegador";
+  }
+
+  function showSelectedFile(file) {
+    dropArea.classList.add("has-file");
+    dropText.textContent = "Archivo seleccionado correctamente";
+    dropFilePanel.style.display = "block";
+    dropFileName.textContent = file.name;
+    dropFileSize.textContent = formatBytes(file.size);
+    dropFileFill.style.width = "100%";
+    dropFileStatus.textContent = "Archivo listo en el navegador";
+  }
+
+  function resetUploadUi() {
+    if (currentXhr) {
+      try { currentXhr.abort(); } catch (_) { }
+      currentXhr = null;
+    }
+
+    stopFakeUploadSimulation();
+    fakeUploadPercent = 0;
+    fakeUploadCap = 0;
+    setBusy(false);
+    hideUploadPanel();
+    uploadPanelTitle.textContent = "Conectando con el servidor";
+    uploadPanelPercent.textContent = "0%";
+    uploadPanelFill.classList.remove("is-indeterminate");
+    uploadPanelFill.style.width = "0%";
+    uploadPanelDetail.textContent = "Preparando solicitud...";
+
+    formStatus.textContent = "";
+    formStatus.classList.remove("error");
+
+    try { form.reset(); } catch (_) { }
+    videoInput.value = "";
+    resetDropAreaUi();
+
+    if (enhancedLanguageSelect) {
+      enhancedLanguageSelect.syncFromSelect();
+    }
+
+    if (enhancedVoiceSelect) {
+      enhancedVoiceSelect.syncFromSelect();
+    }
+
+    syncVoiceWithLanguage();
+  }
+
+  dropArea.addEventListener("dragover", function (e) {
+    e.preventDefault();
+    if (videoInput.disabled) return;
+    dropArea.classList.add("dragging");
+    dropText.textContent = "Suelta el video para seleccionarlo";
+  });
+
+  dropArea.addEventListener("dragleave", function (e) {
+    e.preventDefault();
+    if (videoInput.disabled) return;
+    dropArea.classList.remove("dragging");
+    if (!videoInput.files || !videoInput.files.length) {
+      resetDropAreaUi();
+    }
+  });
+
+  dropArea.addEventListener("drop", function (e) {
+    e.preventDefault();
+    if (videoInput.disabled) return;
+
+    dropArea.classList.remove("dragging");
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+
+    if (file && file.type.startsWith("video/")) {
+      videoInput.files = e.dataTransfer.files;
+      showSelectedFile(file);
+    } else {
+      resetDropAreaUi();
+      dropText.textContent = "Solo puedes seleccionar videos.";
+    }
+  });
+
+  dropArea.addEventListener("click", function () {
+    if (!videoInput.disabled) {
+      videoInput.click();
+    }
+  });
+
+  videoInput.addEventListener("change", function () {
+    const file = videoInput.files && videoInput.files[0];
+    if (file && file.type.startsWith("video/")) {
+      showSelectedFile(file);
+    } else {
+      resetDropAreaUi();
+    }
+  });
+
+  languageSelect.addEventListener("change", syncVoiceWithLanguage);
+  window.addEventListener("pageshow", resetUploadUi);
+  window.addEventListener("load", resetUploadUi);
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    formStatus.textContent = "";
+    formStatus.classList.remove("error");
+
+    if (!videoInput.files || !videoInput.files.length) {
+      formStatus.textContent = "Seleccione un archivo de video antes de continuar.";
+      formStatus.classList.add("error");
+      return;
+    }
+
+    const formData = new FormData(form);
+    const xhr = new XMLHttpRequest();
+    currentXhr = xhr;
+
+    setBusy(true);
+    stopFakeUploadSimulation();
+    fakeUploadPercent = 4;
+    fakeUploadCap = 88;
+    setUploadProgress(4, "Conectando con el servidor", "Preparando la conexión y el envío del archivo...");
+
+    xhr.open("POST", "/api/jobs", true);
+    xhr.responseType = "json";
+
+    xhr.upload.addEventListener("loadstart", function () {
+      startFakeUploadSimulation(
+        "Enviando al servidor",
+        "El archivo ya fue seleccionado y ahora se está enviando al servidor...",
+        10,
+        88
+      );
+    });
+
+    xhr.upload.addEventListener("progress", function (event) {
+      if (!event.lengthComputable || event.total <= 0) return;
+
+      const realPercent = 10 + (event.loaded / event.total) * 78;
+      advanceFakeUploadTo(
+        realPercent,
+        "Enviando al servidor",
+        `Subiendo video... ${formatBytes(event.loaded)} de ${formatBytes(event.total)}`
+      );
+    });
+
+    xhr.upload.addEventListener("load", function () {
+      startFakeUploadSimulation(
+        "Archivo enviado",
+        "El video ya salió del navegador. Esperando confirmación del servidor...",
+        Math.max(fakeUploadPercent, 90),
+        97
+      );
+    });
+
+    xhr.addEventListener("load", function () {
+      currentXhr = null;
+      stopFakeUploadSimulation();
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setUploadProgress(100, "Trabajo creado", "Conexión completada y trabajo creado correctamente.");
+
+        const data = xhr.response || {};
+        if (data.redirect_url) {
+          window.location.href = data.redirect_url;
+          return;
+        }
+
+        setBusy(false);
+        formStatus.textContent = "El servidor respondió, pero no devolvió la redirección esperada.";
+        formStatus.classList.add("error");
+        return;
+      }
+
+      let message = "No se pudo crear el trabajo.";
+      if (xhr.response && xhr.response.detail) {
+        message = xhr.response.detail;
+      }
+
+      setBusy(false);
+      formStatus.textContent = message;
+      formStatus.classList.add("error");
+    });
+
+    xhr.addEventListener("error", function () {
+      currentXhr = null;
+      stopFakeUploadSimulation();
+      setBusy(false);
+      formStatus.textContent = "Error de red durante la conexión con el servidor.";
+      formStatus.classList.add("error");
+    });
+
+    xhr.addEventListener("abort", function () {
+      currentXhr = null;
+      stopFakeUploadSimulation();
+      setBusy(false);
+      hideUploadPanel();
+    });
+
+    xhr.send(formData);
+  });
+
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let value = bytes;
+    let unitIndex = 0;
+
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+
+    return value.toFixed(value >= 100 || unitIndex === 0 ? 0 : 1) + " " + units[unitIndex];
+  }
+</script>
+{% endblock %}

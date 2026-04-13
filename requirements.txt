@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+python-multipart
+jinja2
+faster-whisper
+ctranslate2
+transformers
+sentencepiece
+torch
+piper-tts
+imageio-ffmpeg
+soundfile
+numpy
+huggingface-hub
+python-dotenv

@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}Trabajo {{ job.id }} · Doblaje local de video{% endblock %}
+
+{% block content %}
+<section class="status-layout">
+  <div class="card status-card">
+    <div class="status-header">
+      <div>
+        <h2 class="status-title">Estado del trabajo</h2>
+        <p class="section-subtitle">Seguimiento en tiempo real del procesamiento del video.</p>
+      </div>
+      <div id="status-badge" class="status-badge {{ job.status }}">{{ job.status }}</div>
+    </div>
+
+    <div class="progress-panel">
+      <div class="progress-top">
+        <div class="progress-title">Progreso total</div>
+        <div id="progress-label" class="progress-value">{{ job.progress or 0 }}%</div>
+      </div>
+      <div class="progress-bar" aria-label="Barra de progreso">
+        <div id="progress-fill" class="progress-fill" style="width: {{ job.progress or 0 }}%;"></div>
+      </div>
+
+      <div class="message-box">
+        <strong>Mensaje actual</strong>
+        <div id="message">{{ job.message }}</div>
+      </div>
+    </div>
+
+    <div class="details-grid">
+      <div class="detail-row">
+        <div class="detail-label">ID del trabajo</div>
+        <div id="job-id" class="detail-value">{{ job.id }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Etapa</div>
+        <div id="stage" class="detail-value">{{ job.stage or "queued" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Archivo</div>
+        <div id="filename" class="detail-value">{{ job.filename }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Idioma destino</div>
+        <div id="target-language" class="detail-value">{{ job.target_language }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Voz</div>
+        <div id="voice-name" class="detail-value">{{ job.voice_name }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Última actualización</div>
+        <div id="updated-at" class="detail-value">{{ job.updated_at }}</div>
+      </div>
+    </div>
+
+    <div id="download-box" class="download-box" style="{% if not job.output_file %}display:none;{% endif %}">
+      <div>
+        <h3>Nombre del archivo final</h3>
+        <p>Puede cambiar el nombre antes de descargarlo. La extensión <strong>.mp4</strong> se agrega automáticamente.
+        </p>
+
+        <div class="download-row">
+          <input id="download-name" type="text" placeholder="Ejemplo: mi_video_doblado" autocomplete="off">
+          <a id="download-link" class="button button-primary"
+            href="{% if job.output_file %}/download/{{ job.output_file }}{% else %}#{% endif %}">
+            Descargar video doblado
+          </a>
+        </div>
+
+        <div class="inline-help">
+          El archivo generado por la app no cambia de nombre en disco. Solo cambia el nombre con el que se descarga.
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      Esta vista se actualiza automáticamente mientras el trabajo esté en cola o en proceso.
+    </div>
+  </div>
+
+  <div class="card sidebar-card">
+    <h3>Etapas del proceso</h3>
+    <ul>
+      <li><strong>init</strong>: preparación del trabajo y carga del archivo.</li>
+      <li><strong>transcribe</strong>: detección y transcripción de voz.</li>
+      <li><strong>translate</strong>: traducción al idioma de destino.</li>
+      <li><strong>tts</strong>: generación del nuevo audio con Piper.</li>
+      <li><strong>mix</strong>: construcción de la pista doblada.</li>
+      <li><strong>mux</strong>: unión del audio nuevo con el video.</li>
+    </ul>
+
+    <h3 style="margin-top: 22px;">Recomendación</h3>
+    <p>
+      No cierre la ventana del servidor mientras el trabajo está en proceso. En videos largos es normal
+      que algunas etapas permanezcan varios minutos en el mismo porcentaje.
+    </p>
+    <div id="next-job-box" style="display:none; margin-top:4rem;">
+      <a href="/" class="button button-primary">Traducir otro video</a>
+    </div>
+  </div>
+</section>
+
+<script>
+  let currentOutputFile = {{ (job.output_file or '') | tojson }};
+  let currentSourceFilename = {{ (job.filename or '') | tojson }};
+  const downloadFlagKey = "download_clicked_{{ job.id }}";
+  let jobLang = "{{ job.target_language }}";
+
+  function updateBadge(status) {
+    const badge = document.getElementById("status-badge");
+    badge.textContent = status;
+    badge.className = "status-badge " + status;
+  }
+
+  function makeSuggestedName(sourceFilename) {
+    const raw = String(sourceFilename || "").trim();
+    if (!raw) return "video_doblado";
+    const lastDot = raw.lastIndexOf(".");
+    const stem = lastDot > 0 ? raw.slice(0, lastDot) : raw;
+    return stem + "_doblado_" + jobLang;
+  }
+
+  function updateNextJobBox(status) {
+    const box = document.getElementById("next-job-box");
+    const clickedDownload = sessionStorage.getItem(downloadFlagKey) === "1";
+
+    if (status === "done" && clickedDownload) {
+      box.style.display = "block";
+    } else {
+      box.style.display = "none";
+    }
+  }
+
+  function updateDownloadLink() {
+    const box = document.getElementById("download-box");
+    const link = document.getElementById("download-link");
+    const input = document.getElementById("download-name");
+
+    if (!currentOutputFile) {
+      box.style.display = "none";
+      return;
+    }
+
+    box.style.display = "block";
+
+    if (!input.dataset.userEdited) {
+      input.value = makeSuggestedName(currentSourceFilename);
+    }
+
+    const chosenName = (input.value || "").trim();
+    const url = new URL("/download/" + currentOutputFile, window.location.origin);
+
+    if (chosenName) {
+      url.searchParams.set("download_name", chosenName);
+    }
+
+    link.href = url.pathname + url.search;
+  }
+
+  function renderJob(data) {
+    const progress = Number.isFinite(Number(data.progress)) ? Number(data.progress) : 0;
+
+    document.getElementById("progress-label").textContent = progress + "%";
+    document.getElementById("progress-fill").style.width = progress + "%";
+    document.getElementById("message").textContent = data.message || "";
+    document.getElementById("stage").textContent = data.stage || "processing";
+    document.getElementById("filename").textContent = data.filename || "";
+    document.getElementById("target-language").textContent = data.target_language || "";
+    document.getElementById("voice-name").textContent = data.voice_name || "";
+    document.getElementById("updated-at").textContent = data.updated_at || "";
+    updateBadge(data.status || "processing");
+
+    if (data.filename) {
+      currentSourceFilename = data.filename;
+    }
+
+    if (data.output_file) {
+      currentOutputFile = data.output_file;
+    }
+
+    updateDownloadLink();
+    updateNextJobBox(data.status || "");
+  }
+
+  async function refreshJob() {
+    try {
+      const response = await fetch("/api/jobs/{{ job.id }}");
+      const data = await response.json();
+      renderJob(data);
+
+      if (data.status === "queued" || data.status === "processing") {
+        setTimeout(refreshJob, 2000);
+      }
+    } catch (error) {
+      setTimeout(refreshJob, 4000);
+    }
+  }
+
+  const downloadNameInput = document.getElementById("download-name");
+  downloadNameInput.addEventListener("input", function () {
+    downloadNameInput.dataset.userEdited = "1";
+    updateDownloadLink();
+  });
+
+  const downloadLink = document.getElementById("download-link");
+  if (downloadLink) {
+    downloadLink.addEventListener("click", function () {
+      sessionStorage.setItem(downloadFlagKey, "1");
+      updateNextJobBox("done");
+    });
+  }
+
+  renderJob({{ job | tojson }});
+  setTimeout(refreshJob, 2000);
+</script>
+{% endblock %}

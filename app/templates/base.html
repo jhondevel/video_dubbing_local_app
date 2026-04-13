@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Doblaje local de video{% endblock %}</title>
+  <link rel="shortcut icon" href="../static/favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="../static/styles.css">
+</head>
+
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-badge">DV</div>
+        <div class="brand-copy">
+          <h1>Doblaje local de video</h1>
+          <p>Procesamiento local con Whisper, MarianMT y Piper</p>
+        </div>
+      </div>
+      <a class="topbar-link" href="/">Inicio</a>
+    </header>
+
+    {% block content %}{% endblock %}
+  </div>
+</body>
+
+</html>
